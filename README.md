@@ -23,7 +23,7 @@ SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**
 |---|---|---|
 | `TZ` | `America/Chicago` | Container timezone, e.g. `America/Chicago`. |
 | `AUTO_UPDATE` | `suite` | Update policy: `none`, `suite`, `custom`. |
-| `AUTO_UPDATE_INTERVAL_HOURS` | `0` (including when omitted) | Optional unattended APT upgrade interval in hours. `0` disables periodic updates; a positive integer enables them. OpenSSH package changes write `/config/debug/restart-required.txt` without automatically restarting SSHD. |
+| `DEFAULT_ADMIN` | `true` | Legacy Unraid initial-account seeding only when `users.conf` is absent. Set `false` to disable. |\n| `ADMIN_USER` | `admin` | First-boot Unraid username only; existing `users.conf` takes precedence. |\n| `ADMIN_PASS` | (unset) | First-boot Unraid password only; no active default account is bundled. Must not be a common/placeholder password. |\n| `AUTO_UPDATE_INTERVAL_HOURS` | `0` (including when omitted) | Optional unattended APT upgrade interval in hours. `0` disables periodic updates; a positive integer enables them. OpenSSH package changes write `/config/debug/restart-required.txt` without automatically restarting SSHD. |
 | `PASSWORD_AUTH` | (unset) | Force OpenSSH password auth policy: `yes`/`no`. |
 | `ALLOW_USERS` | (unset) | Space-separated allowlist of SSH users (e.g. `admin alice`). |
 | `F2B_CONFIG_MODE` | `symlink` | Populate `/etc/fail2ban` from `/config/fail2ban`: `symlink` \| `overlay` \| `noclobber` \| `replace`. |
@@ -36,7 +36,7 @@ SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**
 | `CLEAR_LOGS` | `false` | When true, archives previous run logs to `/config/log/archive/<name>.<UTC-timestamp>.log` and truncates current logs on boot. |
 
 
-**User accounts:** `/config/sshd/users.conf` is the sole account source. The legacy `DEFAULT_ADMIN`, `ADMIN_USER`, `ADMIN_PASS` and `SFTP_USERS` variables and command-line user specifications are no longer consumed; do not put credentials in your Compose environment. Edit `users.conf` and restart to reapply passwords/hashes. Fresh installations have no built-in username/password and refuse to expose SSHD until at least one user is configured. An SFTP chroot remains root:root (0755); bind-mounted Unraid data can retain nobody:users (65534:100), with access controlled by its host permissions/ACLs.
+**User accounts:** `/config/sshd/users.conf` is the source of truth after provisioning. For an older Unraid template, `ADMIN_USER` (default `admin`) and `ADMIN_PASS` can create an initial `username:password:1000:100:sftp` entry **only when `users.conf` does not exist** and `DEFAULT_ADMIN` is not `false`. This matches the template's `/home/admin/sftp` volume. A blank, known-default (`password`, `admin`) or placeholder password is rejected. The example value `ADMIN_PASS=password` in older templates must be changed before first boot. On subsequent starts, existing `users.conf` wins; changes to `ADMIN_PASS` in Unraid do not change an existing account. Edit `users.conf` and restart to reapply credentials. `SFTP_USERS` and command-line account specifications remain unsupported. SFTP chroot homes must remain `root:root` (`0755`); mounted Unraid shares can retain `nobody:users` (`65534:100`) with appropriate permissions/ACLs.
 
 **Notes**
 - Persistent logs always in `/config/log/`.
