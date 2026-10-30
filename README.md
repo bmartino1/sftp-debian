@@ -23,7 +23,10 @@ SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**
 |---|---|---|
 | `TZ` | `America/Chicago` | Container timezone, e.g. `America/Chicago`. |
 | `AUTO_UPDATE` | `suite` | Update policy: `none`, `suite`, `custom`. |
-| `DEFAULT_ADMIN` | `true` | Set `false` to disable Unraid ADMIN_USER/ADMIN_PASS synchronization. |\n| `ADMIN_USER` | `admin` | Admin account name synchronized into `users.conf` when the Unraid environment changes. |\n| `ADMIN_PASS` | (unset) | Admin password synchronized into `users.conf` when supplied or changed; known default/placeholder passwords are rejected. |\n| `AUTO_UPDATE_INTERVAL_HOURS` | `0` (including when omitted) | Optional unattended APT upgrade interval in hours. `0` disables periodic updates; a positive integer enables them. OpenSSH package changes write `/config/debug/restart-required.txt` without automatically restarting SSHD. |
+| `DEFAULT_ADMIN` | `true` | Set `false` to disable Unraid ADMIN_USER/ADMIN_PASS synchronization. |
+| `ADMIN_USER` | `admin` | Admin account name synchronized into `users.conf` when the Unraid environment changes. |
+| `ADMIN_PASS` | (unset) | Admin password synchronized into `users.conf` when supplied or changed; known default/placeholder passwords are rejected. |
+| `AUTO_UPDATE_INTERVAL_HOURS` | `0` (including when omitted) | Optional unattended APT upgrade interval in hours. `0` disables periodic updates; a positive integer enables them. OpenSSH package changes write `/config/debug/restart-required.txt` without automatically restarting SSHD. |
 | `PASSWORD_AUTH` | (unset) | Force OpenSSH password auth policy: `yes`/`no`. |
 | `ALLOW_USERS` | (unset) | Space-separated allowlist of SSH users (e.g. `admin alice`). |
 | `F2B_CONFIG_MODE` | `symlink` | Populate `/etc/fail2ban` from `/config/fail2ban`: `symlink` \| `overlay` \| `noclobber` \| `replace`. |
