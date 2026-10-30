@@ -55,12 +55,27 @@ mkdir -p \
   /etc/fail2ban /etc/fail2ban/{jail.d,filter.d,action.d} \
   /var/run/sshd /var/run/fail2ban /var/log /opt/debug
 
-# ===== authoritative users.conf (first boot) =====
-# /config/sshd/users.conf is the only account source. Docker environment and
-# command-line user specifications are intentionally ignored.
+# ===== authoritative users.conf / legacy Unraid first-boot provisioning =====
+# Existing users.conf always wins. The legacy ADMIN_* environment variables may
+# seed the FIRST account only when the file is absent; never overwrite passwords
+# from environment on subsequent launches.
 if [[ ! -e /config/sshd/users.conf ]]; then
   install -D -m 0600 /defaults/sshd/users.conf /config/sshd/users.conf
   log "Created /config/sshd/users.conf from credential-free packaged template"
+  if [[ "${DEFAULT_ADMIN:-true}" != "false" && -n "${ADMIN_PASS:-}" ]]; then
+    admin_user="${ADMIN_USER:-admin}"
+    admin_pass="${ADMIN_PASS}"
+    # Reject widely-known placeholders rather than publishing a public login.
+    if [[ ! "$admin_user" =~ ^[A-Za-z_][A-Za-z0-9._-]{0,31}$ ]] ||
+       [[ "$admin_pass" == *:* || "$admin_pass" == "password" || "$admin_pass" == "admin" ||
+          "$admin_pass" == "change-me-now" || "$admin_pass" == "REPLACE_WITH_UNIQUE_PASSWORD" ]]; then
+      warn "Refusing unsafe initial admin settings. Edit /config/sshd/users.conf with a unique password."
+    else
+      printf '%s:%s:1000:100:data\n' "$admin_user" "$admin_pass" >> /config/sshd/users.conf
+      log "Seeded one initial SFTP account from Unraid ADMIN_USER/ADMIN_PASS (UID 1000, GID 100)"
+    fi
+    unset admin_pass
+  fi
 fi
 
 # ===== ensure base config presence (first boot) =====
