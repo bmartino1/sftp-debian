@@ -1,7 +1,7 @@
-# SFTP with Fail2Ban
+# SFTP with Fail2Ban — Debian Forky
 
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-bmmbmm01%2Fsftp2-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/bmmbmm01/sftp2)
-[![GitHub](https://img.shields.io/badge/Source-bmartino1%2Fsftp2-181717?logo=github&logoColor=white)](https://github.com/bmartino1/sftp2)
+[![GitHub](https://img.shields.io/badge/Source-bmartino1%2Fsftp--debian-181717?logo=github&logoColor=white)](https://github.com/bmartino1/sftp-debian)
 [![Unraid](https://img.shields.io/badge/Platform-Unraid-F15A2C?logo=unraid)](https://unraid.net/)
 
 SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**, **Fail2Ban**, and **rsyslog**. Includes hardened SSH settings, persistent configuration, file-based security logs, and four Fail2Ban jails.
@@ -54,7 +54,7 @@ SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**
 The repository-root [docker-compose.yml](./docker-compose.yml) includes the existing configuration comments, both a local `build: .` and a Docker Hub `image:` tag, and the optional `AUTO_UPDATE_INTERVAL_HOURS` setting.
 
 ```bash
-git clone https://github.com/bmartino1/sftp2.git
+git clone https://github.com/bmartino1/sftp-debian.git
 cd sftp2
 # Edit docker-compose.yml host volume paths and create a valid users.conf.
 # First boot creates a credential-free template unless explicit Unraid admin settings seed it.
@@ -193,7 +193,7 @@ mount --bind /data/admin-tools /home/admin/tools
 # Building the container yourself
 
 ```bash
-git clone https://github.com/bmartino1/sftp2.git
+git clone https://github.com/bmartino1/sftp-debian.git
 cd sftp2
 docker compose up -d --build
 ```
