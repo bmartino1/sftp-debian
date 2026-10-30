@@ -24,10 +24,10 @@ SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**
 |---|---|---|
 | `TZ` | `America/Chicago` | Container timezone, e.g. `America/Chicago`. |
 | `AUTO_UPDATE` | `suite` | Update policy: `none`, `suite`, `custom`. |
-| `DEFAULT_ADMIN` | `true` | Set `false` to disable Unraid ADMIN_USER/ADMIN_PASS synchronization. |
-| `ADMIN_USER` | `admin` | Admin account name synchronized into `users.conf` when the Unraid environment changes. |
-| `ADMIN_PASS` | (unset) | Admin password synchronized into `users.conf` when supplied or changed; known default/placeholder passwords are rejected. |
-| `SFTP_USERS` | (unset) | Legacy whitespace-separated inline account definitions, merged into `users.conf` when changed. Each account follows `user:pass[:e][:uid][:gid][:dirs]`. |
+| `DEFAULT_ADMIN` | `true` | Legacy setting retained for compatibility; explicitly supplied valid `ADMIN_PASS` is synchronized regardless of this flag. |
+| `ADMIN_USER` | `admin` | Account name synchronized into persistent `users.conf` on each startup when a valid `ADMIN_PASS` is supplied. |
+| `ADMIN_PASS` | (unset) | Valid supplied password overrides the matching persistent account at every startup; known default/placeholder passwords are rejected. |
+| `SFTP_USERS` | (unset) | Legacy whitespace-separated account definitions merged into persistent `users.conf` on every startup; other users are retained. Format: `user:pass[:e][:uid][:gid][:dirs]`. |
 | `AUTO_UPDATE_INTERVAL_HOURS` | `0` (including when omitted) | Optional unattended APT upgrade interval in hours. `0` disables periodic updates; a positive integer enables them. OpenSSH package changes write `/config/debug/restart-required.txt` without automatically restarting SSHD. |
 | `PASSWORD_AUTH` | (unset) | Force OpenSSH password auth policy: `yes`/`no`. |
 | `ALLOW_USERS` | (unset) | Space-separated allowlist of SSH users (e.g. `admin alice`). |
@@ -41,7 +41,7 @@ SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**
 | `CLEAR_LOGS` | `false` | When true, archives previous run logs to `/config/log/archive/<name>.<UTC-timestamp>.log` and truncates current logs on boot. |
 
 
-**User accounts:** `/config/sshd/users.conf` remains the persistent source of truth. The existing Unraid template's `ADMIN_USER` and `ADMIN_PASS` variables are supported again: on first boot or when these environment values **change**, the entrypoint synchronizes the named account into `users.conf`. An existing account retains its UID, GID and share directory settings; a new admin uses `1000:100:sftp` to match `/home/admin/sftp`. Other users are kept. A protected `/config/sshd/.unraid-admin-state` tracks the last applied environment settings, so editing `users.conf` manually and restarting does not get undone by an **unchanged** Unraid password. If the Unraid WebUI password is changed later, that new setting takes precedence and updates the managed account on the next container start. Use `DEFAULT_ADMIN=false` to disable this synchronization. The legacy `ADMIN_PASS=password` template default is deliberately rejected; set a unique password. `SFTP_USERS` is also supported for legacy inline users; changes are merged into `users.conf` on restart, while unchanged environment values do not overwrite later manual edits. Command-line account specifications remain unsupported. SFTP chroot homes must remain `root:root` (`0755`), while host-mounted shares can keep `nobody:users` (`65534:100`) with appropriate permissions.
+**User accounts:** `/config/sshd/users.conf` remains the persistent account database. On every container startup, explicitly supplied, valid `ADMIN_USER`/`ADMIN_PASS` and `SFTP_USERS` records update matching entries in that file even if their values have not changed since the prior start. The admin account retains its existing UID/GID/share settings; a newly created admin uses `1000:100:sftp`. Unrelated users are preserved. If both inputs name the admin, `ADMIN_USER`/`ADMIN_PASS` takes precedence. An absent `ADMIN_PASS` leaves existing admin credentials unchanged, while known placeholder values (including `password`, `admin`, `change-me-now`, `REPLACE_WITH_UNIQUE_PASSWORD`) are refused and cannot seed the account. Manual changes to environment-managed entries will be overwritten on the next restart while those environment values remain configured; for file-only management, remove or unset the corresponding environment variable. Existing UID/GID mismatch protections still apply. Never expose a public listener with default credentials. SFTP chroot homes must remain `root:root` (`0755`), while shares retain their existing host permissions unless explicitly changed.
 
 **Notes**
 - Persistent logs always in `/config/log/`.
@@ -145,7 +145,7 @@ user2:abc:1002:100
 user3:xyz:1003:100
 ```
 
-**Password updates:** Edit `users.conf` and restart the container; configured passwords are reapplied. The hardened default has `PubkeyAuthentication no`. Blank-password, key-only accounts require explicitly changing SSHD configuration.
+**Password updates:** For accounts managed by Docker/Unraid variables, change the environment value and recreate the container. For file-only accounts, edit `users.conf` and restart. Supplying the environment value overrides the same user in `users.conf` on every startup. The hardened default has `PubkeyAuthentication no`. Blank-password, key-only accounts require explicitly changing SSHD configuration.
 
 ## Encrypted password
 Add `:e` behind password to mark it as encrypted. Use single quotes if using a terminal instead of users config file.
