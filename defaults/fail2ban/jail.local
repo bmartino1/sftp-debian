@@ -1,42 +1,64 @@
 [DEFAULT]
-# Ignore list (add your LANs here if desired)
-ignoreip    = 127.0.0.1/8
-# e.g. ignoreip = 127.0.0.1/8 192.168.0.0/16 172.16.0.0/12
-#Localhost, internal subnet, docker network...
-
-# Timings
-bantime     = 86400
-#24h
-findtime    = 600
-#10m
-maxretry    = 3
-
-# Logging/backends
-backend     = polling
-usedns      = warn
+# Source of truth for bundled SSH jails. Site allowlists belong in persistent /config.
+ignoreip = 127.0.0.1/8 ::1
+findtime = 600
+maxretry = 3
+bantime = 3600
+bantime.increment = true
+backend = polling
+usedns = no
 logencoding = auto
-
-# Database lives in /config
-dbfile      = /config/fail2ban/fail2ban.sqlite3
-dbpurgeage  = 7d
-
-# Default ban action (iptables by default; entrypoint auto-switches to nft if needed)
+# Default firewall backend: override explicitly to nftables-multiport when verified.
 banaction = iptables-multiport
-
-# ***** NO EMAIL. Only ban + whois → /config/log/whois.log *****
-# Use %(port)s so jails can override port; quotes ensure strings.
+banaction_allports = iptables-allports
+# Ban enforcement runs first; WHOIS is supplemental reporting.
 action = %(banaction)s[name=%(__name__)s, port="%(port)s", protocol="tcp"]
          logwhois[logpath=/config/log/whois.log]
 
-# ---------- JAILS ----------
-
 [sshd]
+# Override any packaged sshd jail backend=systemd; container uses auth.log.
+backend = polling
 enabled = true
-# IMPORTANT: this is the *container* SSHD port (keep 22 unless you change sshd_config)
-port    = 22
-filter  = sshd
+port = 22
+filter = sshd
 logpath = /config/log/auth.log
-maxretry = 5
-#a tad more forgiving for typos 3-5
+maxretry = 3
 findtime = 600
-bantime  = 3600
+bantime = 3600
+
+[sshd-cipher-mismatch]
+# Explicitly consume persistent container log files; never require systemd.
+backend = polling
+enabled = true
+port = 22
+filter = sshd-cipher-mismatch
+logpath = /config/log/auth.log
+maxretry = 1
+findtime = 3600
+bantime = 86400
+
+[sshd-banner-fail]
+# Explicitly consume persistent container log files; never require systemd.
+backend = polling
+enabled = true
+port = 22
+filter = sshd-banner-fail
+logpath = /config/log/auth.log
+maxretry = 1
+findtime = 3600
+bantime = 86400
+
+[recidive]
+# Explicitly consume persistent container log files; never require systemd.
+backend = polling
+enabled = true
+logpath = /config/log/fail2ban.log
+filter = recidive
+port = 0:65535
+banaction = %(banaction_allports)s
+# Keep router-level ban logging distinct from action enforcement.
+action = %(banaction_allports)s[name=%(__name__)s, protocol="tcp"]
+         logwhois[logpath=/config/log/whois.log]
+findtime = 86400
+bantime = 604800
+maxretry = 3
