@@ -156,7 +156,14 @@ sync_unraid_admin() {
 }
 # Treat values provided by Unraid as first-class inputs, but do not seed a
 # known public default password into a public-facing SFTP server.
-sync_unraid_admin
+# TRACE must not expose ADMIN_PASS or password-bearing users.conf records.
+if [[ "${TRACE:-0}" == "1" ]]; then
+  set +x
+  sync_unraid_admin
+  set -x
+else
+  sync_unraid_admin
+fi
 
 # ===== ensure base config presence (first boot) =====
 if [[ ! -e /config/fail2ban/fail2ban.local ]]; then
