@@ -28,20 +28,19 @@ services:
       - LOG_STREAMS=auth,fail2ban   # valid: auth,fail2ban,whois (must be comma seperated list tels the docker sdtou logs which log file to view in docker log)
       #End users are now responsible for log rotation and monitoring! old system erased logs at boot now its end users.
 
-      # Users are managed ONLY in /config/sshd/users.conf (source of truth).
-      # Edit that file and restart the container to apply a password change.
+      # /config/sshd/users.conf is the persistent source of truth.
+      # Password changes in users.conf take effect after a container restart.
       # username:password:uid:gid[:dir1,dir2,...]
       # username:encrypted_password:e:uid:gid[:dir1,dir2,...]
       # Example: admin:REPLACE_WITH_A_STRONG_PASSWORD:1000:100:sftp
       #
-      # Older template variables are intentionally no longer used for account
-      # creation; retained here as compatibility notes, NOT active settings:
-      # - DEFAULT_ADMIN=false    # legacy first-boot admin seeding (disabled in code)
-      # - ADMIN_USER=admin       # legacy; edit users.conf instead
-      # - ADMIN_PASS=change-me-now  # legacy; edit users.conf instead
-      # - SFTP_USERS=alice:secret:1001:100:uploads,downloads  # legacy inline users ignored
-      # No active default admin/password is supplied by the image.
-      # New deployments must populate users.conf before SFTP will start.
+      # Existing Unraid WebUI admin variables are supported:
+      # - DEFAULT_ADMIN=true  # set false to disable environment synchronization
+      # - ADMIN_USER=admin    # optional; omit if managing users.conf only
+      # - ADMIN_PASS=USE_A_UNIQUE_PASSWORD  # optional; do not use "password"
+      # A changed ADMIN_USER / ADMIN_PASS updates users.conf at next launch.
+      # An unchanged environment value does not undo manual users.conf edits.
+      # - SFTP_USERS=alice:secret:1001:100:uploads # legacy; not supported.
 
       # SSHD hardening toggles (optional)
       #- PASSWORD_AUTH=no            # force keys-only login. must have ssh keys in folder
