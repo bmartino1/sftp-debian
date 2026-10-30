@@ -1,16 +1,13 @@
-[preview]: https://raw.githubusercontent.com/MarkusMcNugen/docker-templates/master/sftp/SFTP.png "SFTP"
+# SFTP with Fail2Ban
 
-![alt text][preview]
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-bmmbmm01%2Fsftp2-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/bmmbmm01/sftp2)
+[![GitHub](https://img.shields.io/badge/Source-bmartino1%2Fsftp2-181717?logo=github&logoColor=white)](https://github.com/bmartino1/sftp2)
 
-# SFTP with Fail2ban
-Easy to use SFTP ([SSH File Transfer Protocol](https://en.wikipedia.org/wiki/SSH_File_Transfer_Protocol)) server with [OpenSSH](https://en.wikipedia.org/wiki/OpenSSH) and [Fail2ban](https://www.fail2ban.org/wiki/index.php/Main_Page) installed for extra hardening against brute force attacks. A Updated debian-slim runnign fail2ban and openssh server with my prepackaged whois log and jails.
+SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**, **Fail2Ban**, and **rsyslog**. Includes hardened SSH settings, persistent configuration, file-based security logs, and four Fail2Ban jails.
 
----
+[Unraid support forum](https://forums.unraid.net/topic/189050-support-sftp-fail2ban)
 
-**More Info:**  
-Unraid Forum: [https://forums.unraid.net/topic/189050-support-sftp-fail2ban](https://forums.unraid.net/topic/189050-support-sftp-fail2ban)
-
-Docker Hub: [https://hub.docker.com/r/bmmbmm01/sftp2](https://hub.docker.com/r/bmmbmm01/sftp2)
+> **Distribution note:** Debian Forky/testing is rolling, not stable/LTS. Package versions can change between builds; test updates before public-facing deployment.
 
 # Docker Features
 * Base: Debian Forky/testing Slim (rolling; not an LTS/stable distribution)
