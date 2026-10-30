@@ -57,9 +57,9 @@ mkdir -p \
 
 # ===== users.conf and Unraid environment synchronization =====
 # /config/sshd/users.conf is the persistent source of truth. An explicitly
-# supplied ADMIN_PASS is applied when the Unraid environment changes; an
-# unchanged environment never reverts subsequent manual users.conf edits.
-# Other users and existing UID/GID/share fields are preserved.
+# supplied valid ADMIN_PASS takes precedence at each startup, including when
+# DEFAULT_ADMIN=false. Existing UID/GID/share fields and unrelated users stay.
+# An absent ADMIN_PASS leaves manually configured users untouched.
 if [[ ! -e /config/sshd/users.conf ]]; then
   install -D -m 0600 /defaults/sshd/users.conf /config/sshd/users.conf
   log "Created /config/sshd/users.conf from credential-free packaged template"
@@ -74,7 +74,6 @@ sync_unraid_admin() {
 
   # No admin environment password => only users.conf is authoritative.
   [[ -n "$pass" ]] || return 0
-  [[ "${DEFAULT_ADMIN:-true}" != false ]] || return 0
 
   # Never print a password, put it in trace output or pass it as a CLI argument.
   case "$pass" in
@@ -100,9 +99,6 @@ sync_unraid_admin() {
   fi
   digest="$(printf '%s\0%s\0%s' "$salt" "$user" "$pass" | sha256sum)"
   digest="${digest%% *}"
-  if [[ "$user" == "$prior_user" && "$digest" == "$prior_digest" ]]; then
-    return 0
-  fi
 
   # When the managed username changes, replace its old managed record rather
   # than silently leaving an extra privileged login in users.conf.
@@ -410,8 +406,8 @@ fi
 [[ -n "${ALLOW_USERS:-}" ]] && { grep -q '^AllowUsers' /etc/ssh/sshd_config && sed -i "s/^AllowUsers.*/AllowUsers ${ALLOW_USERS}/" /etc/ssh/sshd_config || printf "\nAllowUsers %s\n" "$ALLOW_USERS" >> /etc/ssh/sshd_config; }
 
 # ===== legacy SFTP_USERS compatibility =====
-# Synchronize changed inline credentials without overwriting later manual edits
-# when the environment value is unchanged. Preserve non-matching users.
+# Apply supplied inline user definitions at every startup, including when their
+# environment text is unchanged; preserve records for unrelated users.
 sync_inline_users() {
   local specs="${SFTP_USERS:-}" state=/config/sshd/.sftp-users-state
   local conf=/config/sshd/users.conf old="" digest line name tmp word
@@ -437,7 +433,6 @@ sync_inline_users() {
   digest="$(printf '%s' "$specs" | sha256sum)"
   digest="${digest%% *}"
   [[ -f "$state" ]] && IFS= read -r old < "$state" || true
-  [[ "$digest" == "$old" ]] && return 0
   tmp="$(mktemp /config/sshd/.users-inline.XXXXXXXX)"
   chmod 0600 "$tmp"
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -465,6 +460,12 @@ if [[ "${TRACE:-0}" == 1 ]]; then
   set -x
 else
   sync_inline_users
+fi
+# ADMIN_USER/ADMIN_PASS wins if both environment inputs define the same user.
+# Avoid an inline value silently defeating an explicitly configured Unraid admin.
+if [[ -n "${ADMIN_PASS:-}" && -n "${SFTP_USERS:-}" ]]; then
+  if [[ "${TRACE:-0}" == "1" ]]; then set +x; sync_unraid_admin; set -x
+  else sync_unraid_admin; fi
 fi
 
 # ===== users =====
