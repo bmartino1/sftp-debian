@@ -71,8 +71,8 @@ if [[ ! -e /config/sshd/users.conf ]]; then
           "$admin_pass" == "change-me-now" || "$admin_pass" == "REPLACE_WITH_UNIQUE_PASSWORD" ]]; then
       warn "Refusing unsafe initial admin settings. Edit /config/sshd/users.conf with a unique password."
     else
-      printf '%s:%s:1000:100:data\n' "$admin_user" "$admin_pass" >> /config/sshd/users.conf
-      log "Seeded one initial SFTP account from Unraid ADMIN_USER/ADMIN_PASS (UID 1000, GID 100)"
+      printf '%s:%s:1000:100:sftp\n' "$admin_user" "$admin_pass" >> /config/sshd/users.conf
+      log "Seeded one initial SFTP account from Unraid ADMIN_USER/ADMIN_PASS (UID 1000, GID 100, share sftp)"
     fi
     unset admin_pass
   fi
