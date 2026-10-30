@@ -237,7 +237,10 @@ do
 done
 
 # ===== SSHD config persisted in /config =====
-backup_and_link /etc/ssh/sshd_config /config/sshd/sshd_config
+# Stage a private runtime copy. Never sed -i or append into a symlink to
+# /config/sshd/sshd_config: persistent user configuration is immutable at boot.
+rm -f /etc/ssh/sshd_config
+install -m 0600 /config/sshd/sshd_config /etc/ssh/sshd_config
 
 # ===== log files: create if missing (do NOT truncate) =====
 mkdir -p /config/log
@@ -251,7 +254,6 @@ chown root:root /config/sshd /config/fail2ban || true
 chmod 0750 /config /config/sshd /config/fail2ban || true
 find /config/fail2ban -type f \( -name "*.conf" -o -name "*.local" \) -exec chmod 0644 {} \; || true
 chmod 0600 /config/sshd/users.conf
-chmod 0600 /config/sshd/users.conf || true
 find /config/sshd/keys -type f -name "*_key" -exec chmod 0600 {} \; 2>/dev/null || true
 chmod 0600 /etc/ssh/sshd_config || true
 
