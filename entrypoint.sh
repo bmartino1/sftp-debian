@@ -18,9 +18,18 @@ shopt -s nullglob
 # ===== version helpers =====
 ver_fail2ban()  { command -v fail2ban-client >/dev/null 2>&1 && fail2ban-client -V 2>/dev/null | head -n1 | sed 's/[^0-9.]*\([0-9.]*\).*/\1/' || echo "unknown"; }
 ver_ssh_client(){ command -v ssh >/dev/null 2>&1 && ssh -V 2>&1 | sed -n 's/.*OpenSSH_\([^ ]*\).*/\1/p' || echo "unknown"; }
-ver_ssh_server(){ dpkg-query -W -f='${Version}\n' openssh-server 2>/dev/null || echo "unknown"; }
-ver_whois()     { dpkg-query -W -f='${Version}\n' whois 2>/dev/null || echo "unknown"; }
-ver_glibc()     { ldd --version 2>/dev/null | head -n1 | awk '{print $NF}' || echo "unknown"; }
+installed_pkg_version() {
+  local pkg="$1" result
+  if command -v apk >/dev/null 2>&1; then
+    result="$(apk list --installed "$pkg" 2>/dev/null | awk -v p="$pkg" '$1 ~ ("^"p"-[0-9]") {print $1; exit}' || true)"
+    printf '%s' "${result:-absent}"
+  else
+    dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null || printf unknown
+  fi
+}
+ver_ssh_server(){ installed_pkg_version openssh-server; }
+ver_whois()     { installed_pkg_version whois; }
+ver_libc()      { if command -v apk >/dev/null 2>&1; then installed_pkg_version musl; else ldd --version 2>&1 | head -n1; fi; }
 
 print_versions() {
   local when="$1"
@@ -29,7 +38,7 @@ print_versions() {
   info "  OpenSSH client: $(ver_ssh_client)"
   info "  OpenSSH server: $(ver_ssh_server)"
   info "  whois:          $(ver_whois)"
-  info "  glibc:          $(ver_glibc)"
+  info "  libc:           $(ver_libc)"
 }
 
 # ===== timezone =====
@@ -46,26 +55,12 @@ mkdir -p \
   /etc/fail2ban /etc/fail2ban/{jail.d,filter.d,action.d} \
   /var/run/sshd /var/run/fail2ban /var/log /opt/debug
 
-# ===== default admin (first boot) =====
-DEFAULT_ADMIN="${DEFAULT_ADMIN:-true}"
-ADMIN_USER="${ADMIN_USER:-admin}"
-ADMIN_PASS="${ADMIN_PASS:-password}"
-
-if [[ ! -s /config/sshd/users.conf ]]; then
-  if [[ "${DEFAULT_ADMIN,,}" == "true" ]]; then
-    install -D -m 0644 /dev/stdin /config/sshd/users.conf <<EOF
-# username:password[:e][:uid][:gid][:dir1,dir2,...]
-# seeded on first boot — CHANGE THIS PASSWORD!
-${ADMIN_USER}:${ADMIN_PASS}:1000:100
-EOF
-    log "Seeded /config/sshd/users.conf with default admin (CHANGE THE PASSWORD)"
-  else
-    install -D -m 0644 /dev/stdin /config/sshd/users.conf <<'EOF'
-# username:password[:e][:uid][:gid][:dir1,dir2,...]
-# file created on first boot; add your users here
-EOF
-    log "Created empty /config/sshd/users.conf (DEFAULT_ADMIN=false)"
-  fi
+# ===== authoritative users.conf (first boot) =====
+# /config/sshd/users.conf is the only account source. Docker environment and
+# command-line user specifications are intentionally ignored.
+if [[ ! -e /config/sshd/users.conf ]]; then
+  install -D -m 0600 /defaults/sshd/users.conf /config/sshd/users.conf
+  log "Created /config/sshd/users.conf from credential-free packaged template"
 fi
 
 # ===== ensure base config presence (first boot) =====
@@ -92,12 +87,13 @@ fi
 
 # --- Permissions (conservative) ---
 log "Setting ownership and permissions on /config"
-chown -R root:root /config/fail2ban /config/sshd
-chmod -R 750 /config
-for f in /config/fail2ban/*.local /config/sshd/*.conf /config/sshd/users.conf; do
+chown root:root /config /config/fail2ban /config/sshd /config/sshd/keys
+chmod 0750 /config /config/fail2ban /config/sshd /config/sshd/keys
+for f in /config/fail2ban/*.local /config/sshd/*.conf; do
   [[ -e "$f" ]] && chmod 644 "$f"
 done
 chmod 600 /config/sshd/keys/*_key 2>/dev/null || true
+chmod 0600 /config/sshd/users.conf || true
 chmod 600 /config/userkeys/*_key 2>/dev/null || true
 
 # --- Apply active configs (idempotent) ---
@@ -116,7 +112,8 @@ smart_copy() {
 
 smart_copy /config/sshd/sshd_config        /etc/ssh/sshd_config
 smart_copy /config/fail2ban/fail2ban.local /etc/fail2ban/fail2ban.local
-smart_copy /config/fail2ban/jail.local     /etc/fail2ban/jail.d/jail.local
+
+# Avoid duplicating root jail.local under jail.d: its overrides would load twice.
 
 # ===== rsyslog: disable imklog noise in containers =====
 if [[ "${DISABLE_IMKLOG:-true}" == "true" ]]; then
@@ -250,14 +247,16 @@ ensure_log /config/log/fail2ban.log
 ensure_log /config/log/whois.log
 
 # ===== perms =====
-chown -R root:root /config/sshd /config/fail2ban || true
+chown root:root /config/sshd /config/fail2ban || true
 chmod 0750 /config /config/sshd /config/fail2ban || true
 find /config -type f \( -name "*.conf" -o -name "*.local" \) -exec chmod 0644 {} \; || true
+chmod 0600 /config/sshd/users.conf || true
 find /config/sshd/keys -type f -name "*_key" -exec chmod 0600 {} \; 2>/dev/null || true
 chmod 0600 /etc/ssh/sshd_config || true
 
 # ===== version banners =====
 [[ -f /opt/debug/build-versions.txt ]] && { info "Application versions at build step:"; sed 's/^/[info]   /' /opt/debug/build-versions.txt; }
+if [[ -x /usr/local/bin/report-versions.sh ]]; then /usr/local/bin/report-versions.sh pre-update; fi
 print_versions "Application versions at container start:"
 
 # ===== updates (default NONE) =====
@@ -284,6 +283,7 @@ case "$mode" in
 esac
 
 print_versions "Application versions after update:"
+if [[ -x /usr/local/bin/report-versions.sh ]]; then /usr/local/bin/report-versions.sh post-update; fi
 
 # ===== SSH host keys (persist) + link to /etc/ssh =====
 [[ -f /config/sshd/keys/ssh_host_ed25519_key ]] || { ssh-keygen -t ed25519 -f /config/sshd/keys/ssh_host_ed25519_key -N ''; }
@@ -310,31 +310,37 @@ mkdir -p "$(dirname "$userConfFinalPath")"
 
 reUser='[A-Za-z0-9._][A-Za-z0-9._-]{0,31}'
 rePass='[^:]{0,255}'
-reUid='[[:digit:]]*'
-reGid='[[:digit:]]*'
-reDir='[^:]*'
-reArgsMaybe='^[^:[:space:]]+:.*$'
 reArgSkip='^([[:blank:]]*#.*|[[:blank:]]*)$'
-
-startSshd=true
-if [[ -n "${1:-}" && ! "$1" =~ $reArgsMaybe ]]; then
-  startSshd=false
-fi
 
 : > "$userConfFinalPath"
 [[ -f "$userConfPath" ]] && grep -Ev "$reArgSkip" "$userConfPath" >> "$userConfFinalPath" || true
-if $startSshd; then
-  [[ -n "${SFTP_USERS:-}" ]] && for spec in $SFTP_USERS; do echo "$spec" >> "$userConfFinalPath"; done
-  [[ -n "${*:-}"         ]] && for spec in "$@";       do echo "$spec" >> "$userConfFinalPath"; done
-fi
 
 create_user() {
   local line="$*"
-  IFS=':' read -r username password maybe_e uid gid dirs <<<"$line"
-  [[ "$username" =~ ^$reUser$ && "$password" =~ ^$rePass$ ]] || { warn "Bad user spec: $line"; return 0; }
-
-  local chpasswd_opt=
-  [[ "${maybe_e:-}" == "e" ]] && chpasswd_opt="-e"
+  local username password uid="" gid="" dirs="" chpasswd_opt=""
+  local -a parts=()
+  IFS=':' read -r -a parts <<<"$line"
+  username="${parts[0]:-}"
+  password="${parts[1]:-}"
+  # Supported: user:pass:uid:gid[:dirs] OR user:encrypted-hash:e:uid:gid[:dirs]
+  if [[ "${parts[2]:-}" == "e" ]]; then
+    chpasswd_opt="-e"
+    uid="${parts[3]:-}"
+    gid="${parts[4]:-}"
+    dirs="${parts[5]:-}"
+    (( ${#parts[@]} <= 6 )) || { warn "Invalid user spec for '$username'"; return 1; }
+  else
+    uid="${parts[2]:-}"
+    gid="${parts[3]:-}"
+    dirs="${parts[4]:-}"
+    (( ${#parts[@]} <= 5 )) || { warn "Invalid user spec for '$username'"; return 1; }
+  fi
+  if [[ ! "$username" =~ ^$reUser$ || ! "$password" =~ ^$rePass$ ||
+        ( -n "$uid" && ! "$uid" =~ ^[0-9]+$ ) ||
+        ( -n "$gid" && ! "$gid" =~ ^[0-9]+$ ) ]]; then
+    warn "Invalid account specification for user '${username:-unknown}'"  # Never output password
+    return 1
+  fi
 
   local useradd_opts=()
   [[ -n "${uid:-}" ]] && useradd_opts+=(--non-unique --uid "$uid")
@@ -344,24 +350,32 @@ create_user() {
   fi
 
   if getent passwd "$username" >/dev/null; then
-    log "User $username exists; skipping useradd"
+    # Existing user: refuse silent identity drift on mounted storage.
+    if [[ -n "$uid" && "$(id -u "$username")" != "$uid" ]] ||
+       [[ -n "$gid" && "$(id -g "$username")" != "$gid" ]]; then
+      warn "UID/GID mismatch for $username: existing identity differs from users.conf; refusing automatic migration"
+      return 1
+    fi
+    log "User $username exists; syncing configured credentials"
   else
-    useradd "${useradd_opts[@]}" "$username"
+    useradd -M -d "/home/$username" -s "$(command -v nologin || echo /sbin/nologin)" "${useradd_opts[@]}" "$username"
+    log "Created SFTP user $username"
   fi
 
   mkdir -p "/home/$username/.ssh"
   chown root:root "/home/$username"
   chmod 755 "/home/$username"
 
+  # Reapply the current users.conf password on every container startup.
   if [[ -n "${password:-}" ]]; then
-    echo "$username:$password" | chpasswd $chpasswd_opt
+    printf '%s:%s\n' "$username" "$password" | chpasswd $chpasswd_opt
   else
-    usermod -p "*" "$username" || true
+    usermod -p "*" "$username"
   fi
 
   local key_file="/config/userkeys/${username}.pub"
   if [[ -f "$key_file" ]]; then
-    chown "$(id -u "$username")" "/home/$username/.ssh"
+    chown "$(id -u "$username"):$(id -g "$username")" "/home/$username/.ssh"
     chmod 700 "/home/$username/.ssh"
     install -m 0600 "$key_file" "/home/$username/.ssh/${username}.pub"
     install -m 0600 "$key_file" "/home/$username/.ssh/authorized_keys"
@@ -369,28 +383,56 @@ create_user() {
     log "Installed SSH key for $username"
   fi
 
+  # Chroot root must remain root-owned and non-writable to the SFTP account.
+  # Set only the chroot directory itself; never traverse its mounted contents.
+  chown root:root "/home/$username"
+  chmod 0755 "/home/$username"
+
+  # Create requested share directories; inspect existing bind mounts too.
+  local -a shares=()
   if [[ -n "${dirs:-}" ]]; then
-    IFS=',' read -r -a arr <<<"$dirs"
-    local ugid
-    ugid="$(id -g "$username")"
-    for sub in "${arr[@]}"; do
-      [[ -z "$sub" ]] && continue
-      mkdir -p "/home/$username/$sub"
-      chown -R "$(id -u "$username"):$ugid" "/home/$username/$sub"
-      log "Ensured /home/$username/$sub"
-    done
+    IFS=',' read -r -a shares <<<"$dirs"
   fi
+  for present in "/home/$username"/*; do
+    [[ -d "$present" && ! -L "$present" ]] || continue
+    [[ "${present##*/}" == ".ssh" ]] && continue
+    shares+=("${present##*/}")
+  done
+
+  local sub target ugid created
+  ugid="$(id -g "$username")"
+  for sub in "${shares[@]}"; do
+    [[ -n "$sub" ]] || continue
+    # Only direct children of a user home are accepted here.
+    if [[ "$sub" == "." || "$sub" == ".." || "$sub" == */* || "$sub" == *..* || "$sub" == ".ssh" ]]; then
+      warn "Unsafe share directory for $username; skipping"
+      continue
+    fi
+    target="/home/$username/$sub"
+    [[ ! -L "$target" ]] || { warn "Refusing symlink share $target"; continue; }
+    created=false
+    if [[ ! -e "$target" ]]; then
+      mkdir -- "$target"
+      created=true
+    fi
+    if [[ "$created" == true ]]; then
+      chown "$(id -u "$username"):$ugid" "$target"
+      chmod 2770 "$target"
+      log "Created $target with group-sharing mode 2770"
+    else
+      log "Preserving existing share permissions: $target ($(stat -c '%u:%g %a' "$target"))"
+    fi
+  done
 }
 
-if $startSshd; then
-  if [[ -s "$userConfFinalPath" ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      [[ "$line" =~ $reArgSkip ]] && continue
-      create_user "$line"
-    done < "$userConfFinalPath"
-  else
-    warn "No users provided; /config/sshd/users.conf is empty. See README for format."
-  fi
+if [[ -s "$userConfFinalPath" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ $reArgSkip ]] && continue
+    create_user "$line"
+  done < "$userConfFinalPath"
+else
+  warn "No users configured in /config/sshd/users.conf; refusing to expose SFTP."
+  exit 1
 fi
 
 # ===== hooks =====
@@ -534,6 +576,23 @@ elif command -v fail2ban-server >/dev/null 2>&1; then
 else
   warn "fail2ban not installed"
 fi
+
+# ===== Fail2Ban readiness before exposing SFTP =====
+f2b_ready=false
+if command -v fail2ban-client >/dev/null 2>&1; then
+  for i in {1..10}; do
+    if fail2ban-client ping >/dev/null 2>&1 && fail2ban-client status sshd >/dev/null 2>&1; then
+      f2b_ready=true
+      break
+    fi
+    sleep 1
+  done
+fi
+if [[ "$f2b_ready" != true ]]; then
+  warn "Fail2Ban daemon / sshd jail not ready; refusing to expose SFTP"
+  exit 1
+fi
+log "Fail2Ban readiness check passed"
 
 # ===== mirror key logs to Docker stdout (toggle with TAIL_LOGS=false) =====
 case "${TAIL_LOGS:-true}" in
