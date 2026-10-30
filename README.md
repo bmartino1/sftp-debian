@@ -25,7 +25,8 @@ SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**
 | `AUTO_UPDATE` | `suite` | Update policy: `none`, `suite`, `custom`. |
 | `DEFAULT_ADMIN` | `true` | Set `false` to disable Unraid ADMIN_USER/ADMIN_PASS synchronization. |
 | `ADMIN_USER` | `admin` | Admin account name synchronized into `users.conf` when the Unraid environment changes. |
-| `ADMIN_PASS` | (unset) | Admin password synchronized into `users.conf` when supplied or changed; known default/placeholder passwords are rejected. |\n| `SFTP_USERS` | (unset) | Legacy whitespace-separated inline account definitions, merged into `users.conf` when changed. Each account follows `user:pass[:e][:uid][:gid][:dirs]`. |
+| `ADMIN_PASS` | (unset) | Admin password synchronized into `users.conf` when supplied or changed; known default/placeholder passwords are rejected. |
+| `SFTP_USERS` | (unset) | Legacy whitespace-separated inline account definitions, merged into `users.conf` when changed. Each account follows `user:pass[:e][:uid][:gid][:dirs]`. |
 | `AUTO_UPDATE_INTERVAL_HOURS` | `0` (including when omitted) | Optional unattended APT upgrade interval in hours. `0` disables periodic updates; a positive integer enables them. OpenSSH package changes write `/config/debug/restart-required.txt` without automatically restarting SSHD. |
 | `PASSWORD_AUTH` | (unset) | Force OpenSSH password auth policy: `yes`/`no`. |
 | `ALLOW_USERS` | (unset) | Space-separated allowlist of SSH users (e.g. `admin alice`). |
