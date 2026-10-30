@@ -16,15 +16,17 @@ Docker Hub: [https://hub.docker.com/r/bmmbmm01/sftp2](https://hub.docker.com/r/b
 * Base: Debian Forky/testing Slim (rolling; not an LTS/stable distribution)
 * Hardened default ssh config
 * Fail2ban
-* Optional config volume can be mounted for custom ssh and fail2ban configuration and easily viewing fail2ban log
+* Persistent `/config` for user accounts, host keys, logs, Fail2Ban configuration and runtime diagnostics
+* Four polling-based Fail2Ban jails, tested with actual firewall ban enforcement
+* Optional timed APT updates and restart-required notices
 
 ## Environment variables
 
 | Name | Default | Description |
 |---|---|---|
-| `TZ` | (unset) | Container timezone, e.g. `America/Chicago`. |
+| `TZ` | `America/Chicago` | Container timezone, e.g. `America/Chicago`. |
 | `AUTO_UPDATE` | `suite` | Update policy: `none`, `suite`, `custom`. |
-| `AUTO_UPDATE_INTERVAL_HOURS` | `0` | Optional unattended APT upgrade interval in hours (`0` disables); writes a restart-required notice on OpenSSH package changes without restarting SSHD. |
+| `AUTO_UPDATE_INTERVAL_HOURS` | `0` (including when omitted) | Optional unattended APT upgrade interval in hours. `0` disables periodic updates; a positive integer enables them. OpenSSH package changes write `/config/debug/restart-required.txt` without automatically restarting SSHD. |
 | `PASSWORD_AUTH` | (unset) | Force OpenSSH password auth policy: `yes`/`no`. |
 | `ALLOW_USERS` | (unset) | Space-separated allowlist of SSH users (e.g. `admin alice`). |
 | `F2B_CONFIG_MODE` | `symlink` | Populate `/etc/fail2ban` from `/config/fail2ban`: `symlink` \| `overlay` \| `noclobber` \| `replace`. |
@@ -37,11 +39,13 @@ Docker Hub: [https://hub.docker.com/r/bmmbmm01/sftp2](https://hub.docker.com/r/b
 | `CLEAR_LOGS` | `false` | When true, archives previous run logs to `/config/log/archive/<name>.<UTC-timestamp>.log` and truncates current logs on boot. |
 
 
-**User accounts:** `/config/sshd/users.conf` is the sole account source. The legacy `DEFAULT_ADMIN`, `ADMIN_USER`, `ADMIN_PASS` and `SFTP_USERS` variables and command-line user specifications are no longer consumed; do not put credentials in your Compose environment. Edit `users.conf` and restart to reapply passwords/hashes. Fresh installations have no built-in username/password and refuse to expose SSHD until at least one user is configured. An SFTP chroot remains root:root (0755); bind-mounted Unraid data can retain nobody:users (65534:100), with access controlled by its host permissions/ACLs.\n\n**Notes**
+**User accounts:** `/config/sshd/users.conf` is the sole account source. The legacy `DEFAULT_ADMIN`, `ADMIN_USER`, `ADMIN_PASS` and `SFTP_USERS` variables and command-line user specifications are no longer consumed; do not put credentials in your Compose environment. Edit `users.conf` and restart to reapply passwords/hashes. Fresh installations have no built-in username/password and refuse to expose SSHD until at least one user is configured. An SFTP chroot remains root:root (0755); bind-mounted Unraid data can retain nobody:users (65534:100), with access controlled by its host permissions/ACLs.
+
+**Notes**
 - Persistent logs always in `/config/log/`.
 - `AUTO_UPDATE=custom` runs `/config/updateapps.sh`.
-- `MAIL_SERVER=true` lets you use your own mail actions. (advance side loading and settign with custom and udpate apps.)
-- Docker default will stop mail action and force login to log folder.
+- `MAIL_SERVER=true` allows custom mail actions when mail delivery is separately configured.
+- By default, mail actions are disabled, but events continue to be logged.
 
 # Updating and running with Docker Compose
 
@@ -59,7 +63,7 @@ Because no default credentials are supplied, you must populate `/config/sshd/use
 
 To use the published Docker Hub image instead, comment out the Compose `build: .` line and run `docker compose pull && docker compose up -d`.
 
-Startup `AUTO_UPDATE=suite` updates the configured Debian suite. `AUTO_UPDATE_INTERVAL_HOURS=0` disables timed checks; choose `24` for a daily unattended APT check. The timed process does not automatically restart SSHD; it records an OpenSSH package change under `/config/debug/restart-required.txt`. Schedule image rebuilds and controlled restarts to activate updated binaries and libraries. Debian testing package updates can introduce breaking changes.
+Startup `AUTO_UPDATE=suite` updates the configured Debian suite. **`AUTO_UPDATE_INTERVAL_HOURS` is optional: if it is not supplied, its default is `0`, so periodic checks are disabled.** Set `24` to opt into a check approximately every 24 hours. The timed process does not automatically restart SSHD; it records an OpenSSH package change under `/config/debug/restart-required.txt`. Schedule image rebuilds and controlled restarts to activate updated binaries and libraries. Debian testing package updates can introduce breaking changes.
 
 The updater is stored at [scripts/update-inplace.sh](./scripts/update-inplace.sh) and installed into the image as `/usr/local/bin/update-inplace.sh`. `AUTO_UPDATE=custom` executes `/config/updateapps.sh` if present.
 
@@ -83,10 +87,7 @@ Inline user arguments are intentionally ignored; `users.conf` controls user crea
 | `config` | Yes | SSH and Fail2ban config files | `/your/config/path/:/config`|
 
 ## Paths/Files
-There is a /debug folder that has the at build what was runnign. The entrypoint script will remake the /config a Volume is not need to run this docker.
-The Entypoint Script has had some updates and the Docker Log will be able to explain and show issues. 
-Fail2ban and sshd have ben updated and scripts/configs updated. 
-If you want to make edits to sshd, fail2ban, and jails configurations as long as they exist in /config they will be deployed and used. see docker varable opton on how to handle fail2ban and adatioanl jails outsdie of my prefereed defaults. A major edit was done to use the ubuntu package maintainers files and our edits to run are now using the.local file the preferred way...
+Build-time diagnostics are under `/opt/debug/` (including `build-versions.txt`); persistent runtime diagnostics go to `/config/debug/`. Mount `/config` to retain accounts, keys, logs and Fail2Ban state across container replacements. The entrypoint seeds missing files and respects existing persistent configurations. `F2B_CONFIG_MODE` controls how packaged and persistent Fail2Ban settings are wired.
 
 The entrypoint seeds missing configuration files, but SSHD will not start until `users.conf` contains a valid account. Existing persisted configuration files are not silently replaced.
 
@@ -110,7 +111,7 @@ The entrypoint seeds missing configuration files, but SSHD will not start until 
 
 ## Ports
 The OpenSSH server runs by default on port 22. You can forward the container's port 22 to any host port if using the docker bridge network and docker NAT system. 
-Otherwise, you will need to edit the port in sshd_config and jails.local
+Changing only the Docker host port (for example, `2222:22`) does not require changing SSHD or Fail2Ban. If you change the internal SSHD port, update the corresponding Fail2Ban port.
 
 | Port | Proto | Required | Function | Example |
 |----------|----------|----------|----------|----------|
@@ -119,14 +120,15 @@ Otherwise, you will need to edit the port in sshd_config and jails.local
 # Customizing
 ## Sharing a directory from your computer
 Mount the host path to a folder inside the user's home directory. Example shows mounting host upload directory to upload directory in user home folder. Alternatively, see the *bindmount dirs from another location* below for an example of mapping to a different directory and using scripts to mount dirs inside users home folders.
+```bash
+docker run -d --name sftp-fail2ban \
+  --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  -v /host/config/path:/config \
+  -v /host/upload:/home/user/upload \
+  -p 2222:22 bmmbmm01/sftp2:latest
 ```
-docker run \
-    --cap-add=NET_ADMIN --cap-add=NET_RAW
-    -v /host/config/path:/config \
-    -v /host/upload:/home/user/upload \
-    -p 22:22 -d bmmbmm01/sftp2:latest \
-    user:pass:1001
-```
+
+Create the account in `/host/config/path/sshd/users.conf` (for example `user:YOUR_STRONG_PASSWORD:1001:100:upload`). User arguments passed to `docker run` are ignored.
 
 ## Add SSH users
 Add users to /config/sshd/users.conf with the following pattern:
@@ -141,14 +143,7 @@ user2:abc:1002:100
 user3:xyz:1003:100
 ```
 
-Note: This hardened image defaults to `PubkeyAuthentication no`. A blank password is not a working key-only login unless you explicitly reconfigure SSHD accordingly.
-
-Example:
-```
-user:pass:1001:100
-user2:abc:1002:100
-user3::1003:100
-```
+**Password updates:** Edit `users.conf` and restart the container; configured passwords are reapplied. The hardened default has `PubkeyAuthentication no`. Blank-password, key-only accounts require explicitly changing SSHD configuration.
 
 ## Encrypted password
 Add `:e` behind password to mark it as encrypted. Use single quotes if using a terminal instead of users config file.
@@ -156,11 +151,10 @@ Add `:e` behind password to mark it as encrypted. Use single quotes if using a t
 foo:$1$0G2g0GSt$ewU0t6GXG15.0hWoOX8X9.:e:1001
 ```
 
-Tip: you can use [atmoz/makepasswd](https://hub.docker.com/r/atmoz/makepasswd/) to generate encrypted passwords:  
-`echo -n "your-password" | docker run -i --rm atmoz/makepasswd --crypt-md5 --clearfrom=-`
+Prefer a modern SHA-512 crypt hash, generated with `openssl passwd -6`, and keep `users.conf` at mode `0600`.
 
-## Logging in with SSH keys
-Place public keys with the user's name in /config/userkeys directory. The keys must be matched with a user's names and a .pub extension. These are copied to `.ssh/authorized_keys` for the user during container start. 
+## Optional SSH public-key authentication
+The default hardened profile disables public-key authentication. If you explicitly enable it in SSHD, place public keys with the user's name in /config/userkeys directory. The keys must be matched with a user's names and a .pub extension. These are copied to `.ssh/authorized_keys` for the user during container start. 
 
 Example:
 ```
@@ -182,29 +176,15 @@ Put your programs in `/config/sshd/scripts` and it will automatically run when t
 See next subsection for an example.
 
 ### Bindmount dirs from another location
-If you are using `--volumes-from` or just want to make a custom directory available in the user's home directory, you can add a script to `/config/sshd/scripts/` that bindmounts after container starts.
-```
-#!/bin/bash
-# File mounted as: /config/sshd/scripts/bindmount.sh
-# Just an example (make your own)
-
-function bindmount() {
-    if [ -d "$1" ]; then
-        mkdir -p "$2"
-    fi
-    mount --bind $3 "$1" "$2"
-}
-
-# Remember permissions, you may have to fix them:
-# chown -R :users /data/common
-
-bindmount /data/admin-tools /home/admin/tools
-bindmount /data/common /home/dave/common
-bindmount /data/common /home/peter/common
-bindmount /data/docs /home/peter/docs --read-only
+Prefer ordinary Docker bind mounts for sharing directories. An advanced custom script under `/config/sshd/scripts/` can use `mount --bind` with suitable privileges, but review this carefully.
+```bash
+#!/usr/bin/env bash
+# Example only; requires CAP_SYS_ADMIN. Prefer Docker volumes instead.
+mkdir -p /home/admin/tools
+mount --bind /data/admin-tools /home/admin/tools
 ```
 
-**NOTE:** Using `mount` requires that your container runs with the `CAP_SYS_ADMIN` capability turned on. [See this answer for more information](https://github.com/atmoz/sftp/issues/60#issuecomment-332909232).
+**NOTE:** Using `mount` requires `CAP_SYS_ADMIN` and compatible container security policy. [See this answer for more information](https://github.com/atmoz/sftp/issues/60#issuecomment-332909232).
 
 **Note:** OpenSSH and OpenSSL are provided by Debian Forky/testing packages, which are updated through APT; package versions may lag upstream releases. Rebuild and verify the container regularly. No upstream tarball is compiled during container startup.
 
