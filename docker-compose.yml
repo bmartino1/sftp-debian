@@ -40,7 +40,7 @@ services:
       # - ADMIN_PASS=USE_A_UNIQUE_PASSWORD  # optional; do not use "password"
       # A changed ADMIN_USER / ADMIN_PASS updates users.conf at next launch.
       # An unchanged environment value does not undo manual users.conf edits.
-      # - SFTP_USERS=alice:secret:1001:100:uploads # legacy; not supported.
+      # - SFTP_USERS=alice:secret:1001:100:uploads # optional; updates users.conf on changes
 
       # SSHD hardening toggles (optional)
       #- PASSWORD_AUTH=no            # force keys-only login. must have ssh keys in folder
