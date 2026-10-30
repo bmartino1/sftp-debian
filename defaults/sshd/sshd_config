@@ -8,13 +8,15 @@ Protocol 2
 HostKey /config/sshd/keys/ssh_host_ed25519_key
 HostKey /config/sshd/keys/ssh_host_rsa_key
 
-#Recommended, but Optional Set Ciphers ssh uses:
-#KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
-#Ciphers aes256-gcm@openssh.com,chacha20-poly1305@openssh.com
-#MACs hmac-sha2-512,hmac-sha2-256
-
-# Host Key Algorithms (Optional: Ensure older clients can connect)
-#HostKeyAlgorithms ssh-ed25519,rsa-sha2-512,rsa-sha2-256
+# Hardened non-FIPS SSH algorithm profile. Test client compatibility before deployment.
+# Prefer hybrid post-quantum exchanges; retain Curve25519 and NIST P-256 fallback.
+KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,curve25519-sha256,ecdh-sha2-nistp256
+# Authenticated-encryption ciphers only; no CBC or CTR.
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+# SHA-2 ETM MACs for compatibility; AEAD ciphers authenticate internally.
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+# Host keys generated at first boot: ED25519 and RSA 4096 (RSA SHA-2 signatures).
+HostKeyAlgorithms ssh-ed25519,rsa-sha2-512,rsa-sha2-256
 
 # Optional Key Authentication only no users accounts only machine ssh keys...
 # Disable password authentication (use keys only)
@@ -25,10 +27,12 @@ HostKey /config/sshd/keys/ssh_host_rsa_key
 #AuthorizedKeysFile /config/userkeys
 
 # Login Grace and Timeouts
-LoginGraceTime 0
-# Allow 30 seconds to authenticate (CVE FIX)
+LoginGraceTime 20
+# Bounded authentication deadline; 0 disables the timeout (do not use 0).
 
-MaxAuthTries 2
+MaxAuthTries 3
+MaxSessions 1
+MaxStartups 10:30:30
 # Limit failed login attempts
 
 #MaxSessions 2
@@ -44,8 +48,16 @@ UseDNS no
 
 # Limit access (No shells, no tunnels, no forwards... just sftp)
 PermitRootLogin no
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PubkeyAuthentication no
+UsePAM no
+# Debian profile: disable PAM explicitly for this password-only SFTP service.
+PermitTTY no
+PermitUserEnvironment no
 X11Forwarding no
 AllowTcpForwarding no
+DisableForwarding yes
 GatewayPorts no
 PermitTunnel no
 AllowAgentForwarding no
@@ -55,8 +67,8 @@ AllowAgentForwarding no
 #
 
 # Force sftp and chroot jail
-Subsystem sftp internal-sftp
-ForceCommand internal-sftp
+Subsystem sftp internal-sftp -f AUTHPRIV -l INFO
+ForceCommand internal-sftp -f AUTHPRIV -l INFO
 ChrootDirectory %h
 
 # Logging
