@@ -1,9 +1,9 @@
 # ---- Dockerfile (Debian 13 slim, pre-make + version stamp) ----
-FROM debian:trixie-slim
+FROM debian:forky-slim
 
 LABEL maintainer="bmartino1" \
       org.opencontainers.image.title="sftp-fail2ban" \
-      org.opencontainers.image.description="Secure SFTP with OpenSSH + Fail2Ban (Debian slim)"
+      org.opencontainers.image.description="Secure SFTP with OpenSSH + Fail2Ban (Debian testing rolling)"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Chicago \
@@ -30,7 +30,7 @@ RUN apt-get update && \
       fail2ban rsyslog \
       whois iptables nftables \
       tzdata ca-certificates curl bash tini iproute2 procps \
-      init-system-helpers net-tools \
+      init-system-helpers net-tools openssl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ----- Pre-make: runtime dirs & log files with sane perms -----
@@ -86,8 +86,8 @@ RUN chmod +x /usr/local/bin/*.sh
 
 # Healthcheck & port
 EXPOSE 22
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD bash -lc 'ss -lnt | grep -q ":22 " || exit 1'
+HEALTHCHECK --interval=30s --timeout=8s --start-period=30s --retries=3 \
+  CMD bash -lc 'pgrep -x sshd >/dev/null && sshd -t -f /etc/ssh/sshd_config >/dev/null 2>&1 && fail2ban-client ping >/dev/null 2>&1 && fail2ban-client status sshd >/dev/null 2>&1'
 
 # ----- Build-time version stamp (what this image ships with) -----
 RUN mkdir -p /opt/debug && \
@@ -98,6 +98,7 @@ RUN mkdir -p /opt/debug && \
         echo "OpenSSH server: $(dpkg-query -W -f='\''${Version}\n'\'' openssh-server 2>/dev/null)"; \
         echo "rsyslog: $(dpkg-query -W -f='\''${Version}\n'\'' rsyslog 2>/dev/null)"; \
         echo "whois: $(dpkg-query -W -f='\''${Version}\n'\'' whois 2>/dev/null)"; \
+        echo "OpenSSL: $(openssl version 2>/dev/null)"; \
         echo "glibc: $(ldd --version 2>/dev/null | head -n1 | awk '\''{print $NF}'\'')"; \
         date -u +"Built at: %Y-%m-%dT%H:%M:%SZ"; \
       } > /opt/debug/build-versions.txt'
