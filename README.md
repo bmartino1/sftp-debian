@@ -2,6 +2,7 @@
 
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-bmmbmm01%2Fsftp2-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/bmmbmm01/sftp2)
 [![GitHub](https://img.shields.io/badge/Source-bmartino1%2Fsftp2-181717?logo=github&logoColor=white)](https://github.com/bmartino1/sftp2)
+[![Unraid](https://img.shields.io/badge/Platform-Unraid-F15A2C?logo=unraid)](https://unraid.net/)
 
 SFTP-only file transfer using **Debian Forky/testing**, **OpenSSH**, **OpenSSL**, **Fail2Ban**, and **rsyslog**. Includes hardened SSH settings, persistent configuration, file-based security logs, and four Fail2Ban jails.
 
