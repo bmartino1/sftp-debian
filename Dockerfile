@@ -9,7 +9,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Chicago \
     AUTO_UPDATE=suite \
     PUID=0 \
-    PGID=0
+    PGID=0 \
+    AUTO_UPDATE_INTERVAL_HOURS=0
 
 # Create a few dirs early so later COPYs never fail
 RUN mkdir -p \
@@ -84,10 +85,14 @@ COPY entrypoint.sh      /usr/local/bin/entrypoint.sh
 COPY update-inplace.sh  /usr/local/bin/update-inplace.sh
 RUN chmod +x /usr/local/bin/*.sh
 
+# Alpine-derived Debian diagnostics and periodic updater
+COPY scripts/ /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/*.sh && bash -n /usr/local/bin/periodic-update.sh /usr/local/bin/report-versions.sh /usr/local/bin/validate-security.sh
+
 # Healthcheck & port
 EXPOSE 22
 HEALTHCHECK --interval=30s --timeout=8s --start-period=30s --retries=3 \
-  CMD bash -lc 'pgrep -x sshd >/dev/null && sshd -t -f /etc/ssh/sshd_config >/dev/null 2>&1 && fail2ban-client ping >/dev/null 2>&1 && fail2ban-client status sshd >/dev/null 2>&1'
+  CMD ["/usr/local/bin/healthcheck.sh"]
 
 # ----- Build-time version stamp (what this image ships with) -----
 RUN mkdir -p /opt/debug && \
