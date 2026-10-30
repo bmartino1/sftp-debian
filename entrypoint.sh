@@ -90,7 +90,8 @@ log "Setting ownership and permissions on /config"
 chown root:root /config /config/fail2ban /config/sshd /config/sshd/keys
 chmod 0750 /config /config/fail2ban /config/sshd /config/sshd/keys
 for f in /config/fail2ban/*.local /config/sshd/*.conf; do
-  [[ -e "$f" ]] && [[ "$f" == "/config/sshd/users.conf" ]] && chmod 600 "$f" || chmod 644 "$f"
+  [[ -e "$f" ]] || continue
+  if [[ "$f" == "/config/sshd/users.conf" ]]; then chmod 0600 "$f"; else chmod 0644 "$f"; fi
 done
 chmod 600 /config/sshd/keys/*_key 2>/dev/null || true
 chmod 0600 /config/sshd/users.conf || true
