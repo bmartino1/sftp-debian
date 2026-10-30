@@ -55,28 +55,108 @@ mkdir -p \
   /etc/fail2ban /etc/fail2ban/{jail.d,filter.d,action.d} \
   /var/run/sshd /var/run/fail2ban /var/log /opt/debug
 
-# ===== authoritative users.conf / legacy Unraid first-boot provisioning =====
-# Existing users.conf always wins. The legacy ADMIN_* environment variables may
-# seed the FIRST account only when the file is absent; never overwrite passwords
-# from environment on subsequent launches.
+# ===== users.conf and Unraid environment synchronization =====
+# /config/sshd/users.conf is the persistent source of truth. An explicitly
+# supplied ADMIN_PASS is applied when the Unraid environment changes; an
+# unchanged environment never reverts subsequent manual users.conf edits.
+# Other users and existing UID/GID/share fields are preserved.
 if [[ ! -e /config/sshd/users.conf ]]; then
   install -D -m 0600 /defaults/sshd/users.conf /config/sshd/users.conf
   log "Created /config/sshd/users.conf from credential-free packaged template"
-  if [[ "${DEFAULT_ADMIN:-true}" != "false" && -n "${ADMIN_PASS:-}" ]]; then
-    admin_user="${ADMIN_USER:-admin}"
-    admin_pass="${ADMIN_PASS}"
-    # Reject widely-known placeholders rather than publishing a public login.
-    if [[ ! "$admin_user" =~ ^[A-Za-z_][A-Za-z0-9._-]{0,31}$ ]] ||
-       [[ "$admin_pass" == *:* || "$admin_pass" == "password" || "$admin_pass" == "admin" ||
-          "$admin_pass" == "change-me-now" || "$admin_pass" == "REPLACE_WITH_UNIQUE_PASSWORD" ]]; then
-      warn "Refusing unsafe initial admin settings. Edit /config/sshd/users.conf with a unique password."
-    else
-      printf '%s:%s:1000:100:sftp\n' "$admin_user" "$admin_pass" >> /config/sshd/users.conf
-      log "Seeded one initial SFTP account from Unraid ADMIN_USER/ADMIN_PASS (UID 1000, GID 100, share sftp)"
-    fi
-    unset admin_pass
-  fi
 fi
+
+sync_unraid_admin() {
+  local user="${ADMIN_USER:-admin}" pass="${ADMIN_PASS:-}"
+  local config=/config/sshd/users.conf state=/config/sshd/.unraid-admin-state
+  local prior_user="" prior_salt="" prior_digest="" salt digest
+  local line name existing="" rest="" item old_pass="" marker="" uid="" gid="" dirs=""
+  local tmp changed=0 found=0
+
+  # No admin environment password => only users.conf is authoritative.
+  [[ -n "$pass" ]] || return 0
+  [[ "${DEFAULT_ADMIN:-true}" != false ]] || return 0
+
+  # Never print a password, put it in trace output or pass it as a CLI argument.
+  case "$pass" in
+    password|admin|change-me-now|REPLACE_WITH_UNIQUE_PASSWORD)
+      warn "ADMIN_PASS is a known default/placeholder; refusing to synchronize it"
+      return 0 ;;
+  esac
+  if [[ ! "$user" =~ ^[A-Za-z_][A-Za-z0-9._-]{0,31}$ ||
+        "$pass" == *:* || "$pass" == *$'\n'* || "$pass" == *$'\r'* ]]; then
+    warn "Invalid ADMIN_USER or ADMIN_PASS value; leaving users.conf unchanged"
+    return 1
+  fi
+
+  # A private per-install salt prevents identical passwords having the same
+  # state fingerprint across installations. No raw password is stored here.
+  if [[ -f "$state" ]]; then
+    IFS=':' read -r prior_user prior_salt prior_digest < "$state" || true
+  fi
+  if [[ "$prior_salt" =~ ^[a-f0-9]{32}$ ]]; then
+    salt="$prior_salt"
+  else
+    salt="$(openssl rand -hex 16)"
+  fi
+  digest="$(printf '%s\0%s\0%s' "$salt" "$user" "$pass" | sha256sum)"
+  digest="${digest%% *}"
+  if [[ "$user" == "$prior_user" && "$digest" == "$prior_digest" ]]; then
+    return 0
+  fi
+
+  # When the managed username changes, replace its old managed record rather
+  # than silently leaving an extra privileged login in users.conf.
+  tmp="$(mktemp /config/sshd/.users.conf.XXXXXXXX)"
+  chmod 0600 "$tmp"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" == "$user:"* ]]; then
+      if (( found == 1 )); then
+        warn "Duplicate managed user '$user' in users.conf"
+        rm -f "$tmp"
+        return 1
+      fi
+      found=1
+      IFS=':' read -r -a item <<< "$line"
+      if [[ "${item[2]:-}" == "e" ]]; then
+        uid="${item[3]:-1000}"; gid="${item[4]:-100}"; dirs="${item[5]:-sftp}"
+      else
+        uid="${item[2]:-1000}"; gid="${item[3]:-100}"; dirs="${item[4]:-sftp}"
+      fi
+      # Keep explicitly configured UID/GID/share for an existing account.
+      printf '%s:%s:%s:%s:%s\n' "$user" "$pass" "$uid" "$gid" "$dirs" >> "$tmp"
+      changed=1
+    elif [[ -n "$prior_user" && "$prior_user" != "$user" && "$line" == "$prior_user:"* ]]; then
+      # This line was previously managed by the Unraid environment.
+      changed=1
+    else
+      printf '%s\n' "$line" >> "$tmp"
+    fi
+  done < "$config"
+  if (( found == 0 )); then
+    printf '%s:%s:1000:100:sftp\n' "$user" "$pass" >> "$tmp"
+    changed=1
+  fi
+  if (( changed == 1 )); then
+    chown root:root "$tmp"
+    mv -f "$tmp" "$config"
+    chmod 0600 "$config"
+    log "Synchronized Unraid ADMIN_USER/ADMIN_PASS into users.conf (other users retained)"
+    if [[ -n "$prior_user" && "$prior_user" != "$user" ]] && getent passwd "$prior_user" >/dev/null; then
+      passwd -l "$prior_user" >/dev/null || warn "Could not lock previously managed user account"
+    fi
+  else
+    rm -f "$tmp"
+  fi
+  tmp="$(mktemp /config/sshd/.admin-state.XXXXXXXX)"
+  chmod 0600 "$tmp"
+  printf '%s:%s:%s\n' "$user" "$salt" "$digest" > "$tmp"
+  chown root:root "$tmp"
+  mv -f "$tmp" "$state"
+  chmod 0600 "$state"
+}
+# Treat values provided by Unraid as first-class inputs, but do not seed a
+# known public default password into a public-facing SFTP server.
+sync_unraid_admin
 
 # ===== ensure base config presence (first boot) =====
 if [[ ! -e /config/fail2ban/fail2ban.local ]]; then
