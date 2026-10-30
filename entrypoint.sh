@@ -29,7 +29,7 @@ installed_pkg_version() {
 }
 ver_ssh_server(){ installed_pkg_version openssh-server; }
 ver_whois()     { installed_pkg_version whois; }
-ver_libc()      { if command -v apk >/dev/null 2>&1; then installed_pkg_version musl; else ldd --version 2>&1 | head -n1; fi; }
+ver_libc()      { if command -v apk >/dev/null 2>&1; then installed_pkg_version musl; else ldd --version 2>&1 | sed -n '1p'; fi; }
 
 print_versions() {
   local when="$1"
