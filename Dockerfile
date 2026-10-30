@@ -80,9 +80,8 @@ RUN set -eux; \
     find /defaults -type f -exec chmod 0644 {} \; ; \
     chown -R root:root /defaults
 
-# Entrypoint & updater
+# Entrypoint
 COPY entrypoint.sh      /usr/local/bin/entrypoint.sh
-COPY update-inplace.sh  /usr/local/bin/update-inplace.sh
 RUN chmod +x /usr/local/bin/*.sh
 
 # Alpine-derived Debian diagnostics and periodic updater
