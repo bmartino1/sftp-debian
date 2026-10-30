@@ -90,7 +90,7 @@ log "Setting ownership and permissions on /config"
 chown root:root /config /config/fail2ban /config/sshd /config/sshd/keys
 chmod 0750 /config /config/fail2ban /config/sshd /config/sshd/keys
 for f in /config/fail2ban/*.local /config/sshd/*.conf; do
-  [[ -e "$f" ]] && chmod 644 "$f"
+  [[ -e "$f" ]] && [[ "$f" == "/config/sshd/users.conf" ]] && chmod 600 "$f" || chmod 644 "$f"
 done
 chmod 600 /config/sshd/keys/*_key 2>/dev/null || true
 chmod 0600 /config/sshd/users.conf || true
@@ -249,7 +249,8 @@ ensure_log /config/log/whois.log
 # ===== perms =====
 chown root:root /config/sshd /config/fail2ban || true
 chmod 0750 /config /config/sshd /config/fail2ban || true
-find /config -type f \( -name "*.conf" -o -name "*.local" \) -exec chmod 0644 {} \; || true
+find /config/fail2ban -type f \( -name "*.conf" -o -name "*.local" \) -exec chmod 0644 {} \; || true
+chmod 0600 /config/sshd/users.conf
 chmod 0600 /config/sshd/users.conf || true
 find /config/sshd/keys -type f -name "*_key" -exec chmod 0600 {} \; 2>/dev/null || true
 chmod 0600 /etc/ssh/sshd_config || true
@@ -593,6 +594,17 @@ if [[ "$f2b_ready" != true ]]; then
   exit 1
 fi
 log "Fail2Ban readiness check passed"
+
+# ===== optional timed unattended Debian package upgrades =====
+# Existing AUTO_UPDATE=suite still controls updates at container startup.
+# Timed upgrades are opt-in and do not restart running SSH sessions.
+if [[ "${AUTO_UPDATE_INTERVAL_HOURS:-0}" =~ ^[0-9]+$ ]] && (( AUTO_UPDATE_INTERVAL_HOURS > 0 )); then
+  log "Starting unattended Debian package checks every ${AUTO_UPDATE_INTERVAL_HOURS} hours"
+  /usr/local/bin/periodic-update.sh &
+elif [[ "${AUTO_UPDATE_INTERVAL_HOURS:-0}" != "0" ]]; then
+  warn "Invalid AUTO_UPDATE_INTERVAL_HOURS; must be a nonnegative integer"
+  exit 1
+fi
 
 # ===== mirror key logs to Docker stdout (toggle with TAIL_LOGS=false) =====
 case "${TAIL_LOGS:-true}" in
