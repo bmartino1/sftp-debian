@@ -51,7 +51,7 @@ PermitRootLogin no
 PasswordAuthentication yes
 KbdInteractiveAuthentication no
 PubkeyAuthentication no
-UsePAM no
+#UsePAM no
 # Debian profile: disable PAM explicitly for this password-only SFTP service.
 PermitTTY no
 PermitUserEnvironment no
